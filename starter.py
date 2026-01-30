@@ -9,21 +9,82 @@ PLEASE READ THE FOLLOWING BEFORE YOU RUN THE SCRIPT:
 n_probes*n_ips<150K (number of probes*number of ips shouldn't cross this number)
 """
 
+USERID = ""
+
+# RIPE Atlas API Key - Required for creating measurements directly via RIPE Atlas API
+# Get your API key from: https://atlas.ripe.net/keys/
+RIPE_ATLAS_API_KEY = ""
 
 class MeasurementType(str, Enum):
     TRACEROUTE = "traceroute"
     PING = "ping"
+    DNS = "dns"
     """
     These are not supported yet.
     """
     # HTTP = "http"
-    # DNS = "dns"
     # SSL_CERT = "sslcert"
 
 
 class AddressProbeMapping(BaseModel):
     address: str
     probes: List[int]
+
+
+class DNSQueryType(str, Enum):
+    """DNS query types supported by RIPE Atlas"""
+    A = "A"
+    AAAA = "AAAA"
+    TXT = "TXT"
+    MX = "MX"
+    NS = "NS"
+    SOA = "SOA"
+    CNAME = "CNAME"
+    PTR = "PTR"
+    ANY = "ANY"
+
+
+class DNSProtocol(str, Enum):
+    """DNS protocol options"""
+    UDP = "UDP"
+    TCP = "TCP"
+
+
+class DNSMeasurementDefinition(BaseModel):
+    """
+    DNS measurement definition for RIPE Atlas API.
+    
+    See: https://atlas.ripe.net/docs/apis/rest-api-manual/measurements/types/dns.html
+    """
+    target: str  # DNS resolver to query (e.g., "8.8.8.8", "1.1.1.1")
+    query_argument: str  # Domain to query (e.g., "example.com")
+    query_type: DNSQueryType = DNSQueryType.A
+    query_class: str = "IN"
+    af: int = 4  # Address family: 4 for IPv4, 6 for IPv6
+    protocol: DNSProtocol = DNSProtocol.UDP
+    use_probe_resolver: bool = False  # If True, uses probe's local resolver instead of target
+    set_nsid_bit: bool = False  # Request Name Server ID
+    set_rd_bit: bool = True  # Recursion Desired
+    set_cd_bit: bool = False  # Checking Disabled (DNSSEC)
+    set_do_bit: bool = False  # DNSSEC OK
+    udp_payload_size: int = 512  # EDNS0 UDP payload size (set higher for ECS, e.g., 4096)
+    include_qbuf: bool = False  # Include query buffer in results
+    include_abuf: bool = True  # Include answer buffer in results
+    prepend_probe_id: bool = False  # Prepend probe ID to query
+    description: str = "DNS measurement"
+    # ECS (EDNS Client Subnet) specific fields
+    # Note: RIPE Atlas doesn't have native ECS support in the API,
+    # but you can query ECS-aware resolvers and analyze responses
+    
+    
+class DNSMeasurementRequest(BaseModel):
+    """
+    Full DNS measurement request for RIPE Atlas API.
+    """
+    definitions: List[DNSMeasurementDefinition]
+    probes: List[dict]  # Probe specifications
+    is_oneoff: bool = True  # One-time measurement vs recurring
+    bill_to: str = None  # Optional: billing account
 
 
 class MeasurementRequest(BaseModel):
@@ -42,7 +103,7 @@ class MeasurementRequest(BaseModel):
         return v
 
 
-USERID = ""
+
 
 MEASUREMENT_TYPE = MeasurementType.TRACEROUTE
 
@@ -375,7 +436,7 @@ def launch_measurements():
         type=MEASUREMENT_TYPE,
         addresses_and_probes=addresses_and_probes,
         description=f'testing-{MEASUREMENT_TYPE.value}-{USERID}',
-        userid=USERID,
+        userid="kedar",
     )
 
     # Convert to JSON dict for the API request
@@ -384,5 +445,167 @@ def launch_measurements():
     print('Response body:', response.json())
 
 
+def launch_dns_measurement_ecs(
+    domain: str,
+    probe_ids: List[int],
+    resolver: str = "8.8.8.8",
+    query_type: DNSQueryType = DNSQueryType.A,
+    description: str = "ECS-enabled DNS measurement",
+) -> dict:
+    """
+    Launch an ECS (EDNS Client Subnet) enabled DNS measurement via RIPE Atlas API.
+    
+    ECS allows DNS resolvers to return geographically appropriate responses based on
+    the client's subnet. This is useful for studying CDN behavior, anycast routing,
+    and DNS-based load balancing.
+    
+    Args:
+        domain: Domain name to query (e.g., "www.google.com")
+        probe_ids: List of RIPE Atlas probe IDs to use for the measurement
+        resolver: DNS resolver to query (use ECS-aware resolvers like 8.8.8.8, 1.1.1.1)
+        query_type: Type of DNS query (A, AAAA, TXT, etc.)
+        description: Description for the measurement
+        
+    Returns:
+        dict: API response containing measurement ID and status
+        
+    Note:
+        - Requires a valid RIPE_ATLAS_API_KEY
+        - ECS-aware public resolvers include:
+          - Google DNS: 8.8.8.8, 8.8.4.4
+          - Cloudflare: 1.1.1.1, 1.0.0.1
+          - OpenDNS: 208.67.222.222
+        - Set udp_payload_size >= 512 to enable EDNS0 (required for ECS)
+    """
+    if not RIPE_ATLAS_API_KEY:
+        raise ValueError("RIPE_ATLAS_API_KEY is not set. Get your API key from https://atlas.ripe.net/keys/")
+    
+    # RIPE Atlas API endpoint for creating measurements
+    url = "https://atlas.ripe.net/api/v2/measurements/"
+    
+    headers = {
+        "Authorization": f"Key {RIPE_ATLAS_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    # Build the measurement definition
+    # Using larger UDP payload size to ensure EDNS0 is enabled (required for ECS)
+    measurement_definition = {
+        "type": "dns",
+        "target": resolver,
+        "af": 4,  # IPv4
+        "query_class": "IN",
+        "query_type": query_type.value,
+        "query_argument": domain,
+        "use_probe_resolver": False,
+        "set_rd_bit": True,  # Recursion Desired
+        "set_do_bit": False,  # DNSSEC OK (optional)
+        "set_cd_bit": False,  # Checking Disabled
+        "set_nsid_bit": True,  # Request Name Server ID
+        "protocol": "UDP",
+        "udp_payload_size": 4096,  # Large payload to enable EDNS0
+        "include_qbuf": True,  # Include query buffer for analysis
+        "include_abuf": True,  # Include answer buffer for analysis
+        "description": description,
+    }
+    
+    # Build probe specification
+    probe_spec = {
+        "requested": len(probe_ids),
+        "type": "probes",
+        "value": ",".join(map(str, probe_ids)),
+    }
+    
+    # Full measurement request
+    measurement_request = {
+        "definitions": [measurement_definition],
+        "probes": [probe_spec],
+        "is_oneoff": True,
+    }
+    
+    print(f"Launching DNS measurement for domain: {domain}")
+    print(f"Resolver: {resolver}")
+    print(f"Query type: {query_type.value}")
+    print(f"Number of probes: {len(probe_ids)}")
+    
+    response = requests.post(url, json=measurement_request, headers=headers)
+    
+    if response.status_code == 201:
+        result = response.json()
+        measurement_id = result.get("measurements", [None])[0]
+        print(f"✓ Measurement created successfully!")
+        print(f"  Measurement ID: {measurement_id}")
+        print(f"  View results at: https://atlas.ripe.net/measurements/{measurement_id}/")
+        return result
+    else:
+        print(f"✗ Failed to create measurement")
+        print(f"  Status code: {response.status_code}")
+        print(f"  Response: {response.text}")
+        return {"error": response.text, "status_code": response.status_code}
+
+
+def get_dns_measurement_results(measurement_id: int) -> dict:
+    """
+    Fetch results of a DNS measurement from RIPE Atlas.
+    
+    Args:
+        measurement_id: The measurement ID returned from launch_dns_measurement_ecs
+        
+    Returns:
+        dict: Measurement results including DNS responses
+    """
+    url = f"https://atlas.ripe.net/api/v2/measurements/{measurement_id}/results/"
+    
+    response = requests.get(url)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Failed to fetch results: {response.status_code}")
+        return {"error": response.text, "status_code": response.status_code}
+
+
+def example_dns_ecs_measurement():
+    """
+    Example: Launch an ECS-enabled DNS measurement.
+    
+    This example queries Google's public DNS (8.8.8.8) for www.google.com
+    from probes in different geographic locations to observe ECS behavior.
+    """
+    # Load probes and filter for connected probes with IPv4
+    probes = load_probes('ripe_probes.csv')
+    connected = filter_connected_probes(probes)
+    with_ipv4 = filter_has_ipv4(connected)
+    
+    # Get probes from different countries for geographic diversity
+    # This helps observe how ECS affects DNS responses across regions
+    us_probes = get_probe_ids(filter_by_country(with_ipv4, 'US'))[:5]
+    de_probes = get_probe_ids(filter_by_country(with_ipv4, 'DE'))[:5]
+    jp_probes = get_probe_ids(filter_by_country(with_ipv4, 'JP'))[:5]
+    
+    # Combine probes from different regions
+    selected_probes = us_probes + de_probes + jp_probes
+    
+    if not selected_probes:
+        print("No suitable probes found!")
+        return
+    
+    print(f"Selected {len(selected_probes)} probes from US, DE, and JP")
+    
+    # Launch the DNS measurement
+    # Google DNS (8.8.8.8) supports ECS and will return different IPs
+    # based on the probe's location
+    result = launch_dns_measurement_ecs(
+        domain="www.google.com",
+        probe_ids=selected_probes,
+        resolver="8.8.8.8",  # ECS-aware resolver
+        query_type=DNSQueryType.A,
+        description=f"ECS DNS test - {USERID}",
+    )
+    
+    return result
+
+
 if __name__ == "__main__":
-    launch_measurements()
+    # launch_measurements()
+    example_dns_ecs_measurement()
