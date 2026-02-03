@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "dnspython>=2.8.0",
     "pandas>=2.3.3",
     "pydantic>=2.12.5",
     "requests>=2.32.5",

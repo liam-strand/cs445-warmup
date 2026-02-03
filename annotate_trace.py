@@ -35,35 +35,43 @@ def get_asn_ripenet(ip):
     except Exception as e:
         return {'asn': 'Error', 'error': str(e)}
 
-def get_unique_ips(trace_data):
+def print_flow_annotations(trace_data):
     """
-    Extract unique source IPs from the trace data.
+    Iterate through flows and print IP, Hostname, and ASN for each hop.
     """
-    ips = set()
     flows = trace_data.get('flows', {})
     
-    for flow_id, hops in flows.items():
-        for hop in hops:
-            # Check if 'received' -> 'ip' -> 'src' exists
-            received = hop.get('received')
-            if not received:
-                continue
-                
-            ip_info = received.get('ip', {})
-            src_ip = ip_info.get('src')
-            
-            if src_ip:
-                ips.add(src_ip)
-                
-    return sorted(list(ips))
-
-def get_holder_for_asn(asn):
-    """
-    Optional: Helper to get holder name if we have an ASN.
-    Skipping for now to keep it simple as requested, or can be added if needed.
-    Team Cymru whois gives this for free, but RIPEstat splits it.
-    """
-    pass
+    # Cache for ASN lookups to avoid redundant API calls
+    asn_cache = {}
+    
+    flow_id, hops = list(flows.items())[0]
+    print(f"\nFlow: {flow_id}")
+    print("-" * 80)
+    print(f"{'Hop':<5} | {'IP Address':<16} | {'ASN':<10} | {'Hostname'}")
+    print("-" * 80)
+    
+    for i, hop in enumerate(hops):
+        # Get IP
+        received = hop.get('received')
+        if not received:
+            continue
+        ip_info = received.get('ip', {})
+        src_ip = ip_info.get('src', 'Unknown')
+        
+        # Get Hostname
+        hostname = hop.get('name', '')
+        
+        # Get ASN (cached)
+        if src_ip not in asn_cache:
+            if src_ip != 'Unknown':
+                asn_info = get_asn_ripenet(src_ip)
+                asn_cache[src_ip] = asn_info.get('asn', 'Unknown')
+            else:
+                asn_cache[src_ip] = 'Unknown'
+        
+        asn_val = asn_cache[src_ip]
+        
+        print(f"{i+1:<5} | {src_ip:<16} | {asn_val:<10} | {hostname}")
 
 def main():
     try:
@@ -73,18 +81,8 @@ def main():
         print("Error: trace.json not found.")
         return
 
-    unique_ips = get_unique_ips(trace_data)
-    print(f"Found {len(unique_ips)} unique IPs.")
-    
-    print("\nIP -> ASN Mapping:")
-    print("--------------------------------------------------")
-    print(f"{'IP Address':<20} | {'ASN':<20}")
-    print("--------------------------------------------------")
-    
-    for ip in unique_ips:
-        asn_info = get_asn_ripenet(ip)
-        asn_val = asn_info.get('asn', 'Unknown')
-        print(f"{ip:<20} | {asn_val:<20}")
+    print("Annotating Trace Flows...")
+    print_flow_annotations(trace_data)
 
 if __name__ == "__main__":
     main()
