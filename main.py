@@ -9,11 +9,11 @@ PLEASE READ THE FOLLOWING BEFORE YOU RUN THE SCRIPT:
 n_probes*n_ips<150K (number of probes*number of ips shouldn't cross this number)
 """
 
-USERID = ""
+USERID = "yhe7443"
 
 # RIPE Atlas API Key - Required for creating measurements directly via RIPE Atlas API
 # Get your API key from: https://atlas.ripe.net/keys/
-RIPE_ATLAS_API_KEY = ""
+RIPE_ATLAS_API_KEY = "06b9d943-5556-4ecf-8965-8bb5c66743a4"
 
 class MeasurementType(str, Enum):
     TRACEROUTE = "traceroute"
