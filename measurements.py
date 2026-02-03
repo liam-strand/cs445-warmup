@@ -4,6 +4,13 @@ from enum import Enum
 from typing import List
 from pydantic import BaseModel, field_validator
 import pandas as pd
+from probe_selector import ProbeSelector
+import dns.resolver
+import dns.message
+import dns.rdatatype
+import dns.edns
+import time
+from collections import Counter
 
 """
 PLEASE READ THE FOLLOWING BEFORE YOU RUN THE SCRIPT:
@@ -15,7 +22,6 @@ USERID = "yhe7443"
 # RIPE Atlas API Key - Required for creating measurements directly via RIPE Atlas API
 # Get your API key from: https://atlas.ripe.net/keys/
 RIPE_ATLAS_API_KEY = "06b9d943-5556-4ecf-8965-8bb5c66743a4"
-
 
 
 R_EDGE = [
@@ -69,10 +75,8 @@ NAIVE_PROBE_MEASUREMENTS = {
     "200.0.204.14": 152680543,
     "200.0.204.152": 152680547,
     "146.83.242.102": 152680548,
-    "146.155.88.35": 152680551
+    "146.155.88.35": 152680551,
 }
-
-
 
 
 class MeasurementType(str, Enum):
@@ -124,7 +128,7 @@ class DNSMeasurementDefinition(BaseModel):
     query_type: DNSQueryType = DNSQueryType.A
     query_class: str = "IN"
     af: int = 4  # Address family: 4 for IPv4, 6 for IPv6
-    protocol: DNSProtocol = DNSProtocol.UDP
+    protocol: DNSProtocol = DNSProtocol.TCP
     use_probe_resolver: bool = (
         False  # If True, uses probe's local resolver instead of target
     )
@@ -171,376 +175,241 @@ class MeasurementRequest(BaseModel):
         return v
 
 
-MEASUREMENT_TYPE = MeasurementType.PING
-
 # ============================================================================
 # Helper functions for working with ripe_probes data
 # ============================================================================
 
 
-def load_probes(csv_path: str = "ripe_probes.csv") -> pd.DataFrame:
-    """Load the ripe_probes CSV file into a pandas DataFrame."""
-    return pd.read_csv(csv_path)
+# Removed helper functions in favor of ProbeSelector class in probe_selector.py
 
 
-def filter_by_status(probes: pd.DataFrame, status_name: str) -> pd.DataFrame:
-    """Filter probes by status name (e.g., 'Connected', 'Abandoned', 'Written Off')."""
-    return probes[probes["status_name"] == status_name]
+def get_probes_simple(country_code: str = "CL", limit: int = 50) -> List[int]:
+    """
+    Get a list of probe IDs using simple filtering criteria.
 
+    Args:
+        country_code: Country code to filter by (default "CL")
+        limit: Max number of probes to return
 
-def filter_connected_probes(probes: pd.DataFrame) -> pd.DataFrame:
-    """Filter to only include currently connected probes."""
-    return filter_by_status(probes, "Connected")
+    Returns:
+        List of probe IDs
+    """
+    return ()
 
-
-def filter_by_country(probes: pd.DataFrame, country_code: str) -> pd.DataFrame:
-    """Filter probes by country code."""
-    return probes[probes["country_code"] == country_code]
-
-
-def filter_by_asn(
-    probes: pd.DataFrame, asn: int, ip_version: str = "v4"
-) -> pd.DataFrame:
-    """Filter probes by ASN (Autonomous System Number)."""
-    column = f"asn_{ip_version}"
-    return probes[probes[column] == asn]
-
-
-def filter_has_ipv4(probes: pd.DataFrame) -> pd.DataFrame:
-    """Filter to only include probes that have an IPv4 address."""
-    return probes[probes["address_v4"].notna() & (probes["address_v4"] != "")]
-
-
-def filter_has_ipv6(probes: pd.DataFrame) -> pd.DataFrame:
-    """Filter to only include probes that have an IPv6 address."""
-    return probes[probes["address_v6"].notna() & (probes["address_v6"] != "")]
-
-
-def filter_public_probes(probes: pd.DataFrame) -> pd.DataFrame:
-    """Filter to only include public probes."""
-    return probes[probes["is_public"] == "t"]
-
-
-def filter_anchor_probes(probes: pd.DataFrame) -> pd.DataFrame:
-    """Filter to only include anchor probes."""
-    return probes[probes["is_anchor"] == "t"]
-
-
-def get_probe_ids(probes: pd.DataFrame) -> List[int]:
-    """Extract probe IDs as a list of integers."""
-    return probes["id"].tolist()
-
-
-def filter_by_geographic_bounds(
-    probes: pd.DataFrame,
-    min_lon: float = None,
-    max_lon: float = None,
-    min_lat: float = None,
-    max_lat: float = None,
-) -> pd.DataFrame:
-    """Filter probes by geographic bounds (longitude and latitude)."""
-    filtered = probes.copy()
-
-    if min_lon is not None:
-        filtered = filtered[filtered["lon"] >= min_lon]
-    if max_lon is not None:
-        filtered = filtered[filtered["lon"] <= max_lon]
-    if min_lat is not None:
-        filtered = filtered[filtered["lat"] >= min_lat]
-    if max_lat is not None:
-        filtered = filtered[filtered["lat"] <= max_lat]
-
-    return filtered
-
-
-def get_probes_by_prefix(
-    probes: pd.DataFrame, prefix: str, ip_version: str = "v4"
-) -> pd.DataFrame:
-    """Filter probes by IP prefix (e.g., '89.31.40.0/21')."""
-    column = f"prefix_{ip_version}"
-    return probes[probes[column] == prefix]
-
-
-def get_probe_addresses(probes: pd.DataFrame, ip_version: str = "v4") -> List[str]:
-    """Extract probe addresses as a list, filtering out empty values."""
-    column = f"address_{ip_version}"
-    addresses = probes[column].dropna()
-    addresses = addresses[addresses != ""]
-    return addresses.tolist()
-
-
-def get_probe_stats(probes: pd.DataFrame) -> dict:
-    """Get basic statistics about the probes DataFrame."""
-    stats = {
-        "total_probes": len(probes),
-        "connected": len(filter_by_status(probes, "Connected")),
-        "abandoned": len(filter_by_status(probes, "Abandoned")),
-        "written_off": len(filter_by_status(probes, "Written Off")),
-        "never_connected": len(filter_by_status(probes, "Never Connected")),
-        "with_ipv4": len(filter_has_ipv4(probes)),
-        "with_ipv6": len(filter_has_ipv6(probes)),
-        "public": len(filter_public_probes(probes)),
-        "anchor": len(filter_anchor_probes(probes)),
-        "unique_countries": probes["country_code"].nunique(),
-        "unique_asn_v4": probes["asn_v4"].nunique(),
-    }
-    return stats
-
-
-import dns.resolver
-import dns.message
-import dns.rdatatype
-import dns.edns
-import time
-from collections import Counter
 
 # ... (existing code) ...
+
 
 def get_ground_truth_dns(target_subnet: str, domains: List[str]) -> dict:
     """
     Get ground truth DNS responses for a list of domains using ECS.
-    
+
     Args:
         target_subnet: The subnet to use for ECS (e.g. '146.155.4.0/24')
         domains: List of domains to query
-        
+
     Returns:
         Dict mapping domain to set of resolved IPs
     """
     results = {}
     resolver = dns.resolver.Resolver()
-    resolver.nameservers = ['8.8.8.8'] # Use Google Public DNS
-    
+    resolver.nameservers = ["8.8.8.8"]  # Use Google Public DNS
+
     # Create ECS option
     ecs = dns.edns.ECSOption.from_text(target_subnet)
-    
+
     for domain in domains:
         try:
             # We need to construct a message to direct the query with EDNS options
             query = dns.message.make_query(domain, dns.rdatatype.A)
             query.use_edns(edns=0, options=[ecs])
-            
-            response = dns.query.udp(query, '8.8.8.8', timeout=5.0)
-            
+
+            response = dns.query.udp(query, "8.8.8.8", timeout=5.0)
+
             ips = set()
             for answer in response.answer:
                 if answer.rdtype == dns.rdatatype.A:
                     for item in answer:
                         ips.add(str(item))
-            
+
             results[domain] = ips
             print(f"Ground truth for {domain} (subnet {target_subnet}): {ips}")
-            
+
         except Exception as e:
             print(f"Error querying {domain}: {e}")
             results[domain] = set()
-            
+
     return results
 
+
 def select_probes_georesolver(
-    target_domain: str, 
+    target_domain: str,
     candidate_probes: pd.DataFrame,
-    domains_to_test: List[str] = ["www.google.com", "www.facebook.com", "www.amazon.com", "www.youtube.com"]
+    domains_to_test: List[str] = [
+        "www.google.com",
+        "www.facebook.com",
+        "www.amazon.com",
+        "www.youtube.com",
+    ],
 ) -> List[int]:
     """
     Select probes based on GeoResolver-style DNS redirection similarity.
     """
     # 1. Resolve target domain to get IP and subnet
-    try:
-        # We use the IP provided by the user if domain resolution fails/complexity
-        # target_ip = socket.gethostbyname(target_domain) 
-        # But for this specific task, user gave us:
-        target_ip = "146.155.4.188"
-        target_subnet = "146.155.4.0/24" # Assuming /24
-        print(f"Target: {target_domain} -> {target_ip} -> {target_subnet}")
-    except Exception as e:
-        print(f"Could not resolve target: {e}")
-        return []
+    target_ip = "146.155.4.188"
+    target_subnet = "146.155.4.0/24"  # Assuming /24
+    print(f"Target: {target_domain} -> {target_ip} -> {target_subnet}")
 
     # 2. Get Ground Truth
     print("Fetching ground truth...")
     ground_truth = get_ground_truth_dns(target_subnet, domains_to_test)
-    
+
     # 3. Launch DNS measurements from candidate probes
-    probe_ids = get_probe_ids(candidate_probes)
+    probe_ids = ProbeSelector(candidate_probes).get_ids()
     print(f"Testing {len(probe_ids)} candidate probes...")
-    
+
     measurement_ids = []
     for domain in domains_to_test:
-        # Launch one-off DNS measurement for each domain
-        # We reuse the existing launch_dns_measurement_ecs but strictly for our purposes
-        # We need to query 8.8.8.8 from the probes
-        
-        # Note: launch_dns_measurement_ecs prints results, we need the IDs to fetch results
-        # We'll use a simplified inline logic or call the existing function and parse output if needed
-        # But better to just implement the specific call here for clarity/batching
-        
-        # Actually, let's use the existing function if possible, but it returns a dict 
-        # that includes measurement_id
-        
         res = launch_dns_measurement_ecs(
             domain=domain,
             probe_ids=probe_ids,
             resolver="8.8.8.8",
             description=f"GeoResolver selection for {target_domain} - {domain}",
-            query_type=DNSQueryType.A
+            query_type=DNSQueryType.A,
         )
-        
+
         m_id = res.get("measurements", [None])[0]
         if m_id:
             measurement_ids.append((domain, m_id))
-            
+
     # 4. Wait for results and compute scores
     if not measurement_ids:
         print("No measurements launched successfully.")
         return []
-        
+
     print("Waiting for measurement results (30s)...")
-    time.sleep(30) # Simple wait, ideally poll
-    
+    time.sleep(30)  # Simple wait, ideally poll
+
     probe_scores = Counter()
-    
+
     for domain, m_id in measurement_ids:
         print(f"Fetching results for {domain} (ID: {m_id})...")
         results = get_measurement_results(m_id)
-        
+
         # Analyze results
         for res in results:
-            prb_id = res.get('prb_id')
-            if not prb_id: continue
-            
+            prb_id = res.get("prb_id")
+            if not prb_id:
+                continue
+
             # Extract IPs from result
             # RIPE Atlas result structure for DNS is complex, need to parse 'resultset' -> 'result' -> 'abuf' or 'answers'
             # Usually 'result' -> 'answers' contains the parsed RRs if available
             probe_ips = set()
-            
+
             # The structure depends on whether parsing is enabled. Usually 'result' is a list/object.
             # Simplified parsing:
-            if 'result' in res and 'answers' in res['result']:
-                 for answer in res['result']['answers']:
-                     if answer.get('type') == 'A':
-                         probe_ips.add(answer.get('rdata'))
-            
+            if "result" in res and "answers" in res["result"]:
+                for answer in res["result"]["answers"]:
+                    if answer.get("type") == "A":
+                        probe_ips.add(answer.get("rdata"))
+
             # Calculate overlapping IPs
             overlap = len(probe_ips.intersection(ground_truth.get(domain, set())))
             probe_scores[prb_id] += overlap
 
     # 5. Select top probes
-    # Let's say we want top 10
-    most_common = probe_scores.most_common(10)
+    most_common = probe_scores.most_common(50)
     selected_ids = [pid for pid, score in most_common]
-    
+
     print(f"Selected probes based on GeoResolver: {selected_ids}")
     return selected_ids
 
 
-def get_addresses_and_probes() -> List[AddressProbeMapping]:
-    """Fill in this function with the addresses and probes you want to test. Get them via the RIPE API."""
-
-    # Load the probes data
-    probes = load_probes("ripe_probes.csv")
-
-    # Filter for connected probes
-    connected = filter_connected_probes(probes)
-
-    # For GeoResolver, we want a pool of candidates. 
-    # Let's say we want to test candidates from South America -> "SA" continent, or keep using "Chile" example
-    # The prompt implies we want 'candidate probes' which usually means a broad set.
-    # Let's filter for South America if possible, or just Chile for safety since we know it works.
-    # RIPE data might not have 'continent', let's stick to Chile + Neighbors (manual list if needed)
-    # or just all connected probes if dry_run?
-    # Let's stick to 'chile_probes' to be consistent with previous logic, but maybe expand it slightly?
-    # Actually, let's grab all Connected probes in 'CL' (Chile) as candidates.
-    
-    chile_probes = filter_by_country(connected, "CL")
-
-    # Use GeoResolver selection
-    target_domain = "ialab.ing.uc.cl"
-    
-    # We only run selection if we are NOT in a dry-run check that avoids API calls?
-    # But get_addresses_and_probes is called inside launch_measurements.
-    # This selection makes real API calls. This fits the "warmup" exploration.
-    
-    # WARNING: This will make API calls every time `main.py` is run!
-    # Ideally we cache this, but for now we run it.
-    
-    print("Running GeoResolver selection...")
-    # Limiting to first 50 candidates to save credits/time for this demo
-    candidates = chile_probes.head(50) 
-    
-    selected_probe_ids = select_probes_georesolver(target_domain, candidates)
-    
-    # Fallback if selection fails (empty list)
-    if not selected_probe_ids:
-        print("GeoResolver selection failed or returned no probes. Falling back to simple list.")
-        selected_probe_ids = get_probe_ids(chile_probes)[:10]
-
-    return [AddressProbeMapping(address=address, probes=selected_probe_ids) for address in R_ALL]
+# Removed get_addresses_and_probes in favor of modular approach,
+# but keeping R_ALL available for targets.
 
 
-def launch_measurements(dry_run: bool = True):
-    """Launch measurements directly via RIPE Atlas API."""
+def launch_measurements(
+    probes: List[int],
+    targets: List[str],
+    type: MeasurementType = MeasurementType.PING,
+    dry_run: bool = True,
+) -> List[int]:
+    """
+    Launch measurements directly via RIPE Atlas API.
+
+    Args:
+        probes: List of probe IDs
+        targets: List of target IP addresses or hostnames
+        type: Measurement type (PING or TRACEROUTE)
+        dry_run: If True, only print the payloads without sending requests.
+
+    Returns:
+        List of created measurement IDs
+    """
     if not RIPE_ATLAS_API_KEY:
         print("Error: RIPE_ATLAS_API_KEY must be set.")
-        return
+        return []
 
     url = "https://atlas.ripe.net/api/v2/measurements/"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Key {RIPE_ATLAS_API_KEY}"
+        "Authorization": f"Key {RIPE_ATLAS_API_KEY}",
     }
-    
-    addresses_and_probes = get_addresses_and_probes()
-    
-    print(f"Preparing to schedule measurements for {len(addresses_and_probes)} targets...")
-    
-    # We can group measurements by probe set to minimize API calls, logic-dependent.
-    # For simplicity/safety, we will launch one measurement request per target-probe_set pair for now.
-    
-    for mapping in addresses_and_probes:
+
+    print(
+        f"Preparing to schedule {type.value} measurements for {len(targets)} targets using {len(probes)} probes..."
+    )
+
+    created_ids = []
+
+    for target in targets:
         # Construct the definition
-        description = f"testing-{MEASUREMENT_TYPE.value}-{USERID}-{mapping.address}"
-        
+        description = f"testing-{type.value}-{USERID}-{target}"
+
         definition = {
-            "target": mapping.address,
+            "target": target,
             "description": description,
-            "type": MEASUREMENT_TYPE.value,
-            "af": 4, # IPv4
-            "is_oneoff": True
+            "type": type.value,
+            "af": 4,  # IPv4
+            "is_oneoff": True,
         }
-        
+
         # Add type-specific fields
-        if MEASUREMENT_TYPE == MeasurementType.TRACEROUTE:
-            definition["protocol"] = "ICMP" 
+        if type == MeasurementType.TRACEROUTE:
+            definition["protocol"] = "ICMP"
             definition["paris"] = 16
-        elif MEASUREMENT_TYPE == MeasurementType.PING:
+        elif type == MeasurementType.PING:
             definition["packets"] = 3
-        
+
         # Construct probe specification
         probe_spec = {
-            "requested": len(mapping.probes),
+            "requested": len(probes),
             "type": "probes",
-            "value": ",".join(map(str, mapping.probes))
+            "value": ",".join(map(str, probes)),
         }
-        
+
         # specific to RIPE API: definitions is a list, probes is a list
         payload = {
             "definitions": [definition],
             "probes": [probe_spec],
-            "is_oneoff": True
+            "is_oneoff": True,
         }
-        
+
         if dry_run:
-            print(f"\n[DRY RUN] Would send payload for {mapping.address}:")
+            print(f"\n[DRY RUN] Would send payload for {target}:")
             print(json.dumps(payload, indent=2))
         else:
-            print(f"Sending request for {mapping.address}...")
+            print(f"Sending request for {target}...")
             try:
                 response = requests.post(url, headers=headers, json=payload)
                 if response.status_code == 201:
                     result = response.json()
                     measurements = result.get('measurements', [])
                     print(f"  Success! Measurement IDs: {measurements}")
+                    for mid in measurements:
+                        created_ids.append({"target": target, "measurement_id": mid})
                 else:
                     print(f"  Error {response.status_code}: {response.text}")
             except Exception as e:
@@ -548,6 +417,8 @@ def launch_measurements(dry_run: bool = True):
                 
     if dry_run:
         print("\nDry run complete. Set dry_run=False to execute.")
+        
+    return created_ids
 
 
 def launch_dns_measurement_ecs(
@@ -642,49 +513,78 @@ def get_measurement_results(measurement_id: int) -> dict:
         return {"error": response.text, "status_code": response.status_code}
 
 
-def example_dns_ecs_measurement():
-    """
-    Example: Launch an ECS-enabled DNS measurement.
-
-    This example queries Google's public DNS (8.8.8.8) for www.google.com
-    from probes in different geographic locations to observe ECS behavior.
-    """
-    # Load probes and filter for connected probes with IPv4
-    probes = load_probes("ripe_probes.csv")
-    connected = filter_connected_probes(probes)
-    with_ipv4 = filter_has_ipv4(connected)
-
-    # Get probes from different countries for geographic diversity
-    # This helps observe how ECS affects DNS responses across regions
-    us_probes = get_probe_ids(filter_by_country(with_ipv4, "US"))[:5]
-    de_probes = get_probe_ids(filter_by_country(with_ipv4, "DE"))[:5]
-    jp_probes = get_probe_ids(filter_by_country(with_ipv4, "JP"))[:5]
-
-    # Combine probes from different regions
-    selected_probes = us_probes + de_probes + jp_probes
-
-    if not selected_probes:
-        print("No suitable probes found!")
-        return
-
-    print(f"Selected {len(selected_probes)} probes from US, DE, and JP")
-
-    # Launch the DNS measurement
-    # Google DNS (8.8.8.8) supports ECS and will return different IPs
-    # based on the probe's location
-    result = launch_dns_measurement_ecs(
-        domain="www.google.com",
-        probe_ids=selected_probes,
-        resolver="8.8.8.8",  # ECS-aware resolver
-        query_type=DNSQueryType.A,
-        description=f"ECS DNS test - {USERID}",
-    )
-
-    return result
-
-
-
-
 if __name__ == "__main__":
-    # launch_measurements(dry_run=False)
-    # example_dns_ecs_measurement()
+    import datetime
+
+    # 1. Select Targets
+    targets = R_ALL
+
+    # Initialize formatted results container
+    formatted_results = {
+        "simple_filter": [],
+        "georesolver": []
+    }
+
+    # 2. Strategy A: Simple Filtering
+    print("\n--- Strategy A: Simple Filtering ---")
+    probes_strategy_a = (
+        ProbeSelector.from_csv("ripe_probes.csv")
+        .connected()
+        .has_ipv4()
+        .from_countries(["CL", "AR"])
+        .limit(50)
+        .get_ids()
+    )
+    print(f"Strategy A selected {len(probes_strategy_a)} probes.")
+    
+    if probes_strategy_a:
+        results_a = launch_measurements(
+            probes=probes_strategy_a,
+            targets=targets,
+            type=MeasurementType.PING,
+            dry_run=False, # Switch to False for actual execution
+        )
+        for res in results_a:
+            res["strategy"] = "simple_filter"
+            res["timestamp"] = datetime.datetime.now().isoformat()
+        formatted_results["simple_filter"] = results_a
+
+    # 3. Strategy B: GeoResolver
+    print("\n--- Strategy B: GeoResolver ---")
+    candidates = (
+        ProbeSelector.from_csv("ripe_probes.csv")
+        .connected()
+        .has_ipv4()
+        .from_countries(["CL", "AR", "PE", "BO"])
+        .to_dataframe()
+    )
+    # Note: This performs real DNS queries even in dry run
+    probes_strategy_b = select_probes_georesolver("ialab.ing.uc.cl", candidates)
+    print(f"Strategy B selected {len(probes_strategy_b)} probes.")
+    
+    if probes_strategy_b:
+        results_b = launch_measurements(
+            probes=probes_strategy_b,
+            targets=targets,
+            type=MeasurementType.PING,
+            dry_run=False, # Switch to False for actual execution
+        )
+        for res in results_b:
+            res["strategy"] = "georesolver"
+            res["timestamp"] = datetime.datetime.now().isoformat()
+        formatted_results["georesolver"] = results_b
+
+    # 4. Save Results
+    # Check if we have any results in any category
+    total_results = sum(len(v) for v in formatted_results.values())
+    
+    if total_results > 0:
+        filename = "measurement_log.json"
+        try:
+            with open(filename, "w") as f:
+                json.dump(formatted_results, f, indent=2)
+            print(f"\nSaved {total_results} measurement records to {filename}")
+        except Exception as e:
+            print(f"Error saving log: {e}")
+    else:
+        print("\nNo measurements launched (dry run active or no probes selected).")

@@ -1,0 +1,246 @@
+{
+  "simple_filter": [
+    {
+      "target": "165.124.184.3",
+      "measurement_id": 152691854,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128040"
+    },
+    {
+      "target": "129.105.247.167",
+      "measurement_id": 152691856,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128054"
+    },
+    {
+      "target": "129.105.253.94",
+      "measurement_id": 152691859,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128057"
+    },
+    {
+      "target": "129.105.247.210",
+      "measurement_id": 152691860,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128058"
+    },
+    {
+      "target": "129.105.247.227",
+      "measurement_id": 152691861,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128059"
+    },
+    {
+      "target": "192.5.143.41",
+      "measurement_id": 152691863,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128060"
+    },
+    {
+      "target": "198.71.46.206",
+      "measurement_id": 152691865,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128061"
+    },
+    {
+      "target": "163.253.2.56",
+      "measurement_id": 152691866,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128062"
+    },
+    {
+      "target": "163.253.2.23",
+      "measurement_id": 152691868,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128063"
+    },
+    {
+      "target": "163.253.1.88",
+      "measurement_id": 152691869,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128065"
+    },
+    {
+      "target": "163.253.2.31",
+      "measurement_id": 152691870,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128066"
+    },
+    {
+      "target": "163.253.1.252",
+      "measurement_id": 152691872,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128067"
+    },
+    {
+      "target": "163.253.1.100",
+      "measurement_id": 152691875,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128068"
+    },
+    {
+      "target": "163.253.1.5",
+      "measurement_id": 152691878,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128069"
+    },
+    {
+      "target": "200.0.207.9",
+      "measurement_id": 152691879,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128070"
+    },
+    {
+      "target": "200.0.204.30",
+      "measurement_id": 152691880,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128071"
+    },
+    {
+      "target": "200.0.204.14",
+      "measurement_id": 152691882,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128072"
+    },
+    {
+      "target": "200.0.204.152",
+      "measurement_id": 152691883,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128073"
+    },
+    {
+      "target": "146.83.242.102",
+      "measurement_id": 152691884,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128074"
+    },
+    {
+      "target": "146.155.88.35",
+      "measurement_id": 152691886,
+      "strategy": "simple_filter",
+      "timestamp": "2026-02-03T01:07:03.128075"
+    }
+  ],
+  "georesolver": [
+    {
+      "target": "165.124.184.3",
+      "measurement_id": 152691964,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088425"
+    },
+    {
+      "target": "129.105.247.167",
+      "measurement_id": 152691967,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088439"
+    },
+    {
+      "target": "129.105.253.94",
+      "measurement_id": 152691968,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088441"
+    },
+    {
+      "target": "129.105.247.210",
+      "measurement_id": 152691969,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088443"
+    },
+    {
+      "target": "129.105.247.227",
+      "measurement_id": 152691970,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088444"
+    },
+    {
+      "target": "192.5.143.41",
+      "measurement_id": 152691972,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088446"
+    },
+    {
+      "target": "198.71.46.206",
+      "measurement_id": 152691973,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088447"
+    },
+    {
+      "target": "163.253.2.56",
+      "measurement_id": 152691974,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088448"
+    },
+    {
+      "target": "163.253.2.23",
+      "measurement_id": 152691977,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088449"
+    },
+    {
+      "target": "163.253.1.88",
+      "measurement_id": 152691981,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088450"
+    },
+    {
+      "target": "163.253.2.31",
+      "measurement_id": 152691983,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088451"
+    },
+    {
+      "target": "163.253.1.252",
+      "measurement_id": 152691985,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088452"
+    },
+    {
+      "target": "163.253.1.100",
+      "measurement_id": 152691988,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088454"
+    },
+    {
+      "target": "163.253.1.5",
+      "measurement_id": 152691990,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088455"
+    },
+    {
+      "target": "200.0.207.9",
+      "measurement_id": 152691991,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088456"
+    },
+    {
+      "target": "200.0.204.30",
+      "measurement_id": 152691993,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088457"
+    },
+    {
+      "target": "200.0.204.14",
+      "measurement_id": 152691995,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088458"
+    },
+    {
+      "target": "200.0.204.152",
+      "measurement_id": 152691997,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088459"
+    },
+    {
+      "target": "146.83.242.102",
+      "measurement_id": 152691999,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088460"
+    },
+    {
+      "target": "146.155.88.35",
+      "measurement_id": 152692000,
+      "strategy": "georesolver",
+      "timestamp": "2026-02-03T01:07:46.088461"
+    }
+  ]
+}
